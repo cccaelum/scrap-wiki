@@ -5,61 +5,93 @@ const app = express()
 
 const url = 'https://es.wikipedia.org/wiki/Categor%C3%ADa:M%C3%BAsicos_de_rap'
 
-app.get('/', async (req, res) => {
-    try {
-        const response = await axios.get(url);
-        if (response.status === 200) {
-            const html = response.data;
-            const $ = cheerio.load(html);
+// Ruta principal para listar los músicos
+app.get("/", async (req, res) => {
+  try {
+    const response = await axios.get(url)
+    const html = response.data
+    const $ = cheerio.load(html)
 
-            // Extraer los enlaces y nombres de los músicos de rap
-            const musicosDeRap = [];
-            $('#mw-pages a').each((index, element) => {
-                const name = $(element).text();
-                const link = $(element).attr('href');
-                if (link.startsWith('/wiki/')) {
-                    musicosDeRap.push({
-                        name,
-                        link: link.replace('/wiki/', ''), // Guardar solo la parte final del enlace
-                    });
-                }
-            });
+    const links = []
+    $("#mw-pages a").each((i, elemento) => {
+      const link = $(elemento).attr('href')
+      const name = $(elemento).text()
+      links.push({ name, link })
+    })
 
-            // Renderizar la lista de músicos de rap con enlaces
-            res.send(`
-                <h1>Músicos de Rap en Wikipedia</h1>
-                <ul>
-                    ${musicosDeRap.map(musico => `
-                        <li>
-                            <a href="/musico-de-rap/${encodeURIComponent(musico.link)}">${musico.name}</a>
-                        </li>
-                    `).join('')}
-                </ul>
-            `);
-        }
-    } catch (error) {
-        console.error('Error al hacer scraping:', error);
-        res.status(500).send('Hubo un error al realizar el scraping.');
-    }
-});
+    // Generar HTML para la lista de músicos 
+    const htmlContent = `
+      <html>
+        <head><title>Músicos de Rap</title></head>
+        <body>
+          <h1>Músicos de Rap</h1>
+          <ul>
+            ${links.map(musico => `
+              <li><a href="/musico?link=${encodeURIComponent(musico.link)}">${musico.name}</a></li>
+            `).join('')}
+          </ul>
+        </body>
+      </html>
+    `
 
-// Ruta dinámica para mostrar información de cada músico de rap
-app.get('/musico-de-rap/:id', async (req, res) => {
-    const musicoId = req.params.id;
-    const musicoUrl = `https://es.wikipedia.org/wiki/${musicoId}`;
+    res.send(htmlContent)
 
-    try {
-        const response = await axios.get(musicoUrl);
-        if (response.status === 200) {
-            const html = response.data;
-            res.send(html);
-        }
-    } catch (error) {
-        console.error('Error al acceder a la página del músico de rap:', error);
-        res.status(500).send('Hubo un error al acceder a la página del músico de rap.');
-    }
-});
-
-app.listen(3000, () => {
-    console.log('express esta escuchando en el puerto http://localhost:3000')
+  } catch (error) {
+    console.error(`El error es el ${error}`)
+    res.status(500).send(`Error interno ${error}`)
+  }
 })
+
+//Ruta para mostrar información del músico
+app.get("/musico", async (req, res) => {
+  const link = req.query.link
+  try {
+    const response = await axios.get(`https://es.wikipedia.org${link}`)
+    const html = response.data
+    const $ = cheerio.load(html)
+
+    const h1 = $("h1").text()
+    const images = []
+    $("img.mw-file-element").each((i, elemento) => {
+      const src = $(elemento).attr("src")
+      if (!src.includes('.svg')) { 
+        images.push(src)
+      }
+    })
+    const texts = []
+    $("p").each((i, elemento) => {
+      const text = $(elemento).text()
+      const imgSrc = $(elemento).find("img.mw-file-element").attr("src")
+      texts.push({ text, img: null })
+      
+    })
+
+    // Generar HTML para mostrar la información de cada uno
+    const htmlContent = `
+      <html>
+        <head><title>${h1}</title></head>
+        <body>
+          <h1>${h1}</h1>
+          <div>Imagen:</div>
+          ${images.map(img => `
+            <img src="${img}" alt="Image" style="max-width: 200px; margin: 5px;">
+          `).join('')}
+          <div>Descripcion:</div>
+          ${texts.map(textItem => `
+            <p>${textItem.text}</p>
+            ${textItem.img ? `<img src="${textItem.img}" alt="Image" style="max-width: 200px; margin: 5px;">` : ''}
+          `).join('')}
+        </body>
+      </html>
+    `
+
+    res.send(htmlContent)
+
+  } catch (error) {
+    console.error(`El error es el ${error}`)
+    res.status(500).send(`Error interno ${error}`)
+  }
+})
+
+
+app.listen(3000, () => console.log('Está escuchando en el puerto http://localhost:3000'))
